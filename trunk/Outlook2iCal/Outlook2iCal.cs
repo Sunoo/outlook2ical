@@ -5,11 +5,16 @@ using System.Text;
 using System.Net;
 using System.IO;
 using Microsoft.Office.Interop.Outlook;
+using DDay.iCal;
+using DDay.iCal.Serialization.iCalendar;
+using System.Security.Cryptography;
 
 namespace Outlook2iCal
 {
     class Outlook2iCal
     {
+        private static string tzid;
+
         private static void FtpUpload(string input)
         {
             try
@@ -20,6 +25,7 @@ namespace Outlook2iCal
 
                 //TODO: Don't hardcode credentials
                 request.Credentials = new NetworkCredential("FTPUSERNAME", "FTPPASSWORD");
+
 
                 byte[] fileContents = Encoding.UTF8.GetBytes(input);
                 request.ContentLength = fileContents.Length;
@@ -40,249 +46,199 @@ namespace Outlook2iCal
             }
         }
 
-        private static string FormatDate(DateTime date)
+        private static void DaysOfWeek(DDay.iCal.RecurrencePattern pattern, OlDaysOfWeek mask, int week)
         {
-            //NOTE: The original code uses month + 1 instead of month. No idea why yet.
-            return date.ToString("yyyyMMdd");
-        }
-
-        private static string FormatDateTime(DateTime date)
-        {
-            //NOTE: The original code uses month + 1 instead of month. No idea why yet.
-            return date.ToString("yyyyMMdd'T'HHmmss");
-        }
-
-        private static string CleanLineEndings(string input)
-        {
-            if (input == null)
+            FrequencyOccurrence occur;
+            switch (week)
             {
-                return String.Empty;
+                case 1:
+                    occur = FrequencyOccurrence.Last;
+                    break;
+                case 2:
+                    occur = FrequencyOccurrence.Last;
+                    break;
+                case 3:
+                    occur = FrequencyOccurrence.Last;
+                    break;
+                case 4:
+                    occur = FrequencyOccurrence.Last;
+                    break;
+                case 5:
+                    occur = FrequencyOccurrence.Last;
+                    break;
+                default:
+                    occur = FrequencyOccurrence.None;
+                    break;
             }
-            else
-            {
-                return input.Replace("\r", "\n").Replace("\n\n", "\n").Replace("\n", "\\n").Replace(@",", @"\,");
-            }
-        }
-
-        private static string DaysOfWeek(OlDaysOfWeek mask, string week)
-        {
-            string days = String.Empty;
             if ((mask & OlDaysOfWeek.olMonday) == OlDaysOfWeek.olMonday)
             {
-                days += week + "MO";
+                pattern.ByDay.Add(new WeekDay(DayOfWeek.Monday, occur));
             }
             if ((mask & OlDaysOfWeek.olTuesday) == OlDaysOfWeek.olTuesday)
             {
-                if (days.Length > 0)
-                {
-                    days += ",";
-                }
-                days += week + "TU";
+                pattern.ByDay.Add(new WeekDay(DayOfWeek.Tuesday, occur));
             }
             if ((mask & OlDaysOfWeek.olWednesday) == OlDaysOfWeek.olWednesday)
             {
-                if (days.Length > 0)
-                {
-                    days += ",";
-                }
-                days += week + "WE";
+                pattern.ByDay.Add(new WeekDay(DayOfWeek.Wednesday, occur));
             }
             if ((mask & OlDaysOfWeek.olThursday) == OlDaysOfWeek.olThursday)
             {
-                if (days.Length > 0)
-                {
-                    days += ",";
-                }
-                days += week + "TH";
+                pattern.ByDay.Add(new WeekDay(DayOfWeek.Thursday, occur));
             }
             if ((mask & OlDaysOfWeek.olFriday) == OlDaysOfWeek.olFriday)
             {
-                if (days.Length > 0)
-                {
-                    days += ",";
-                }
-                days += week + "FR";
+                pattern.ByDay.Add(new WeekDay(DayOfWeek.Friday, occur));
             }
             if ((mask & OlDaysOfWeek.olSaturday) == OlDaysOfWeek.olSaturday)
             {
-                if (days.Length > 0)
-                {
-                    days += ",";
-                }
-                days += week + "SA";
+                pattern.ByDay.Add(new WeekDay(DayOfWeek.Saturday, occur));
             }
             if ((mask & OlDaysOfWeek.olSunday) == OlDaysOfWeek.olSunday)
             {
-                if (days.Length > 0)
-                {
-                    days += ",";
-                }
-                days += week + "SU";
-            }
-
-            return days;
-        }
-
-        private static string DaysOfWeek(OlDaysOfWeek mask)
-        {
-            return DaysOfWeek(mask, "");
-        }
-
-        private static string WeekNum(int week)
-        {
-            if (week == 5)
-            {
-                return "-1";
-            }
-            else
-            {
-                return "0" + week;
+                pattern.ByDay.Add(new WeekDay(DayOfWeek.Sunday, occur));
             }
         }
 
-        private static string CreateReoccuringEvent(AppointmentItem item)
+        private static void CreateReoccuringEvent(Event icsEvent, AppointmentItem item)
         {
-            string recurEvent = "RRULE:";
-            
-            RecurrencePattern pattern = item.GetRecurrencePattern();
+            DDay.iCal.RecurrencePattern newPatt = new DDay.iCal.RecurrencePattern();
+
+            Microsoft.Office.Interop.Outlook.RecurrencePattern pattern = item.GetRecurrencePattern();
             OlRecurrenceType patternType = pattern.RecurrenceType;
 
             if (patternType == OlRecurrenceType.olRecursDaily)
             {
-                recurEvent += "FREQ=DAILY";
+                newPatt.Frequency = FrequencyType.Daily;
                 if (!pattern.NoEndDate)
                 {
-                    recurEvent += ";UNTIL=" + FormatDateTime(pattern.PatternEndDate);
+                    newPatt.Until = pattern.PatternEndDate;
                 }
-                recurEvent += ";INTERVAL=" + pattern.Interval;
+                newPatt.Interval = pattern.Interval;
             }
             else if (patternType == OlRecurrenceType.olRecursMonthly)
             {
-                recurEvent += "FREQ=MONTHLY";
+                newPatt.Frequency = FrequencyType.Monthly;
                 if (!pattern.NoEndDate)
                 {
-                    recurEvent += ";UNTIL=" + FormatDateTime(pattern.PatternEndDate);
+                    newPatt.Until = pattern.PatternEndDate;
                 }
-                recurEvent += ";INTERVAL=" + pattern.Interval;
-                recurEvent += ";BYMONTHDAY=" + pattern.DayOfMonth;
+                newPatt.Interval = pattern.Interval;
+                newPatt.ByMonthDay.Add(pattern.DayOfMonth);
             }
             else if (patternType == OlRecurrenceType.olRecursMonthNth)
             {
-                recurEvent += "FREQ=MONTHLY";
+                newPatt.Frequency = FrequencyType.Monthly;
                 if (!pattern.NoEndDate)
                 {
-                    recurEvent += ";UNTIL=" + FormatDateTime(pattern.PatternEndDate);
+                    newPatt.Until = pattern.PatternEndDate;
                 }
-                recurEvent += ";INTERVAL=" + pattern.Interval;
-                recurEvent += ";BYDAY=" + DaysOfWeek(pattern.DayOfWeekMask, WeekNum(pattern.Instance));
+                newPatt.Interval = pattern.Interval;
+                DaysOfWeek(newPatt, pattern.DayOfWeekMask, pattern.Instance);
             }
             else if (patternType == OlRecurrenceType.olRecursWeekly)
             {
-                recurEvent += "FREQ=WEEKLY";
+                newPatt.Frequency = FrequencyType.Weekly;
                 if (!pattern.NoEndDate)
                 {
-                    recurEvent += ";UNTIL=" + FormatDateTime(pattern.PatternEndDate);
+                    newPatt.Until = pattern.PatternEndDate;
                 }
-                recurEvent += ";INTERVAL=" + pattern.Interval;
-                recurEvent += ";BYDAY=" + DaysOfWeek(pattern.DayOfWeekMask);
+                newPatt.Interval = pattern.Interval;
+                DaysOfWeek(newPatt, pattern.DayOfWeekMask, 0);
             }
             else if (patternType == OlRecurrenceType.olRecursYearly)
             {
-                recurEvent += "FREQ=YEARLY";
+                newPatt.Frequency = FrequencyType.Yearly;
                 if (!pattern.NoEndDate)
                 {
-                    recurEvent += ";UNTIL=" + FormatDateTime(pattern.PatternEndDate);
+                    newPatt.Until = pattern.PatternEndDate;
                 }
-                recurEvent += ";INTERVAL=1";
-                recurEvent += ";BYDAY=" + DaysOfWeek(pattern.DayOfWeekMask);
+                newPatt.Interval = 1;
+                DaysOfWeek(newPatt, pattern.DayOfWeekMask, 0);
             }
             else if (patternType == OlRecurrenceType.olRecursYearNth)
             {
-                recurEvent += "FREQ=YEARLY";
+                newPatt.Frequency = FrequencyType.Yearly;
                 if (!pattern.NoEndDate)
                 {
-                    recurEvent += ";UNTIL=" + FormatDateTime(pattern.PatternEndDate);
+                    newPatt.Until = pattern.PatternEndDate;
                 }
-                recurEvent += ";BYMONTH=" + pattern.MonthOfYear;
-                recurEvent += ";BYDAY=" + DaysOfWeek(pattern.DayOfWeekMask, WeekNum(pattern.Instance));
+                newPatt.ByMonth.Add(pattern.MonthOfYear);
+                DaysOfWeek(newPatt, pattern.DayOfWeekMask, pattern.Instance);
             }
 
-            recurEvent += "\n";
+            icsEvent.RecurrenceRules.Add(newPatt);
 
             if (pattern.Exceptions.Count > 0)
             {
-                recurEvent += "EXDATE:";
-                //NOTE: I need to think of a better way to do this, but this works for now.
-                bool firstExcept = true;
+                PeriodList list = new PeriodList();
                 foreach (Microsoft.Office.Interop.Outlook.Exception except in pattern.Exceptions)
                 {
-                    if (!firstExcept)
-                    {
-                        recurEvent += ",";
-                    }
-                    recurEvent += FormatDateTime(except.OriginalDate);
-                    firstExcept = false;
+                    list.Add(new iCalDateTime(except.OriginalDate, tzid));
                 }
-                recurEvent += "\n";
+                icsEvent.ExceptionDates.Add(list);
             }
-
-            return recurEvent;
         }
 
-        private static string CreateEvent(AppointmentItem item, bool notRecurring)
+        private static void CreateEvent(iCalendar ics, AppointmentItem item, bool notRecurring)
         {
-            string icsEvent = "BEGIN:VEVENT\n";
+            Event icsEvent = ics.Create<Event>();
 
             if (item.AllDayEvent)
             {
-                icsEvent += "DTSTART;VALUE=DATE:" + FormatDate(item.Start) + "\n";
+                icsEvent.IsAllDay = true;
+                icsEvent.DTStart = new iCalDateTime(item.Start, tzid);
                 if (notRecurring && !item.IsRecurring)
                 {
-                    icsEvent += "DTEND;VALUE=DATE:" + FormatDate(item.End) + "\n";
+                    icsEvent.DTStart = new iCalDateTime(item.End, tzid);
                 }
             }
             else
             {
-                icsEvent += "DTSTART:" + FormatDateTime(item.Start) + "\n";
-                icsEvent += "DTEND:" + FormatDateTime(item.End) + "\n";
+                icsEvent.DTStart = new iCalDateTime(item.Start, tzid);
+                icsEvent.DTEnd = new iCalDateTime(item.End, tzid);
             }
 
             if (!notRecurring && item.IsRecurring)
             {
-                icsEvent += CreateReoccuringEvent(item);
+                CreateReoccuringEvent(icsEvent, item);
             }
 
-            icsEvent += "LOCATION:" + item.Location + "\n";
-            icsEvent += "SUMMARY:" + item.Subject + "\n";
+            icsEvent.Location = item.Location;
+            icsEvent.Summary = item.Subject;
 
             if (item.Categories != null)
             {
-                icsEvent += "CATEGORIES:" + item.Categories + "\n";
+                string[] cats = item.Categories.Split(',');
+                foreach (string cat in cats)
+                {
+                    icsEvent.Categories.Add(cat);
+                }
             }
 
             //NOTE: This causes issues with Google Calendar, so it's not worth it
-            /*if (item.Sensitivity == OlSensitivity.olNormal)
+            /*switch (item.Sensitivity)
             {
-                icsEvent += "CLASS:PUBLIC\n";
-            }
-            else if (item.Sensitivity == OlSensitivity.olPersonal)
-            {
-                icsEvent += "CLASS:CONFIDENTIAL\n";
-            }
-            else
-            {
-                icsEvent += "CLASS:PRIVATE\n";
+                case OlSensitivity.olNormal:
+                    icsEvent.Class = "PUBLIC";
+                    break;
+                case OlSensitivity.olPersonal:
+                    icsEvent.Class = "CONFIDENTIAL";
+                    break;
+                default:
+                    icsEvent.Class = "PRIVATE";
+                    break;
             }*/
 
-            icsEvent += "DESCRIPTION:" + CleanLineEndings(item.Body) + "\n";
+            icsEvent.Description = item.Body;
 
             if (item.ReminderMinutesBeforeStart > 0)
             {
-                icsEvent += "BEGIN:VALARM\n";
-                icsEvent += "TRIGGER:-PT" + item.ReminderMinutesBeforeStart + "M\n";
-                icsEvent += "ACTION:DISPLAY\n" +
-                    "DESCRIPTION:Reminder\n" +
-                    "END:VALARM\n";
+                Alarm alarm = new Alarm();
+                alarm.Trigger = new Trigger(new TimeSpan(0, 0 - item.ReminderMinutesBeforeStart, 0));
+                alarm.Action = AlarmAction.Display;
+                alarm.Description = "Reminder";
+                icsEvent.Alarms.Add(alarm);
             }
 
             Dictionary<string, string> emails = new Dictionary<string, string>();
@@ -298,49 +254,49 @@ namespace Outlook2iCal
 
             if (item.Organizer != null)
             {
-                icsEvent += "ORGANIZER;CN=" + item.Organizer.Replace(",", @"\,");
                 if (emails.ContainsKey(item.Organizer))
                 {
-                    icsEvent += ":MAILTO:" + emails[item.Organizer] + "\n";
+                    icsEvent.Organizer = new Organizer("MAILTO:" + emails[item.Organizer]);
                 }
                 else
                 {
-                    icsEvent += ":MAILTO:noreply@example.com\n";
+                    icsEvent.Organizer = new Organizer();
                 }
+                icsEvent.Organizer.CommonName = item.Organizer;
             }
 
-            //NOTE: Attendees do not appear on the iPhone when an Organizer is set. This is a strange behavior...
-            //NOTE: Actually it only happens sometimes... Even stranger...
             if (item.RequiredAttendees != null)
             {
                 string[] required = item.RequiredAttendees.Split(new string[] { "; " }, StringSplitOptions.RemoveEmptyEntries);
                 foreach (string req in required)
                 {
-                    icsEvent += "ATTENDEE;ROLE=REQ-PARTICIPANT;";
+                    Attendee attend;
+                    if (emails.ContainsKey(req))
+                    {
+                        attend = new Attendee("MAILTO:" + emails[req]);
+                    }
+                    else
+                    {
+                        attend = new Attendee();
+                    }
+                    attend.Role = "REQ-PARTICIPANT";
                     if (status.ContainsKey(req))
                     {
                         switch (status[req])
                         {
                             case OlResponseStatus.olResponseAccepted:
-                                icsEvent += "PARTSTAT=ACCEPTED;";
+                                attend.ParticipationStatus = "ACCEPTED";
                                 break;
                             case OlResponseStatus.olResponseDeclined:
-                                icsEvent += "PARTSTAT=DECLINED;";
+                                attend.ParticipationStatus = "DECLINED";
                                 break;
                             case OlResponseStatus.olResponseTentative:
-                                icsEvent += "PARTSTAT=TENTATIVE;";
+                                attend.ParticipationStatus = "TENTATIVE";
                                 break;
                         }
                     }
-                    icsEvent += "CN=" + req.Replace(",", @"\,");
-                    if (emails.ContainsKey(req))
-                    {
-                        icsEvent += ":MAILTO:" + emails[req] + "\n";
-                    }
-                    else
-                    {
-                        icsEvent += ":MAILTO:noreply@example.com\n";
-                    }
+                    attend.CommonName = req;
+                    icsEvent.Attendees.Add(attend);
                 }
             }
 
@@ -349,88 +305,83 @@ namespace Outlook2iCal
                 string[] optional = item.OptionalAttendees.Split(new string[] { "; " }, StringSplitOptions.RemoveEmptyEntries);
                 foreach (string opt in optional)
                 {
-                    icsEvent += "ATTENDEE;";
+                    Attendee attend;
+                    if (emails.ContainsKey(opt))
+                    {
+                        attend = new Attendee("MAILTO:" + emails[opt]);
+                    }
+                    else
+                    {
+                        attend = new Attendee();
+                    }
                     if (status.ContainsKey(opt))
                     {
                         switch (status[opt])
                         {
                             case OlResponseStatus.olResponseAccepted:
-                                icsEvent += "PARTSTAT=ACCEPTED;";
+                                attend.ParticipationStatus = "ACCEPTED";
                                 break;
                             case OlResponseStatus.olResponseDeclined:
-                                icsEvent += "PARTSTAT=DECLINED;";
+                                attend.ParticipationStatus = "DECLINED";
                                 break;
                             case OlResponseStatus.olResponseTentative:
-                                icsEvent += "PARTSTAT=TENTATIVE;";
+                                attend.ParticipationStatus = "TENTATIVE";
                                 break;
                         }
                     }
-                    icsEvent += "CN=" + opt.Replace(",", @"\,");
-                    if (emails.ContainsKey(opt))
-                    {
-                        icsEvent += ":MAILTO:" + emails[opt] + "\n";
-                    }
-                    else
-                    {
-                        icsEvent += ":MAILTO:noreply@example.com\n";
-                    }
+                    attend.CommonName = opt;
+                    icsEvent.Attendees.Add(attend);
                 }
             }
 
-            icsEvent += "DTSTAMP:" + FormatDateTime(item.CreationTime.ToUniversalTime()) + "\n";
-            icsEvent += "LAST-MODIFIED:" + FormatDateTime(item.LastModificationTime.ToUniversalTime()) + "\n";
+            icsEvent.DTStamp = new iCalDateTime(item.CreationTime, tzid);
+            icsEvent.LastModified = new iCalDateTime(item.LastModificationTime, tzid);
             //NOTE: Since this is the same for all recurring items, it was breaking the iPhone calendar
-            //icsEvent += "UID:" + item.EntryID + "\n";
-
-            icsEvent += "END:VEVENT\n";
+            //icsEvent.UID = item.EntryID;
+            byte[] buf = Encoding.Default.GetBytes(item.EntryID + item.Start.ToFileTimeUtc());
+            SHA1CryptoServiceProvider sha = new SHA1CryptoServiceProvider();
+            icsEvent.UID = BitConverter.ToString(sha.ComputeHash(buf)).Replace("-", "");
 
             if (!notRecurring && item.IsRecurring)
             {
-                RecurrencePattern pattern = item.GetRecurrencePattern();
+                Microsoft.Office.Interop.Outlook.RecurrencePattern pattern = item.GetRecurrencePattern();
                 foreach (Microsoft.Office.Interop.Outlook.Exception except in pattern.Exceptions)
                 {
                     if (!except.Deleted)
                     {
-                        icsEvent += CreateEvent(except.AppointmentItem, true);
+                        CreateEvent(ics, except.AppointmentItem, true);
                     }
                 }
             }
-
-            return icsEvent;
         }
 
-        private static string CreateEvent(AppointmentItem item)
+        private static iCalendar GenerateIcs()
         {
-            return CreateEvent(item, false);
-        }
+            iCalendar ics = new iCalendar();
 
-        private static string GenerateIcs()
-        {
-            var ics = "BEGIN:VCALENDAR\n" +
-                "X-WR-CALNAME:Outlook\n" +
-                "X-WR-CALDESC:Outlook\n" +
-                "X-WR-TIMEZONE:America/New_York" +
-                "PRODID:-//David Maher/NONSGML Outlook2iCal 1.0//EN" +
-                "VERSION:2.0\n";
+            ITimeZone tz = ics.AddLocalTimeZone();
+            tzid = tz.TZID;
 
+            ics.ProductID = "-//David Maher/NONSGML Outlook2iCal 2.0//EN";
+            
             Items calendarItems = new Application().GetNamespace("MAPI").GetDefaultFolder(OlDefaultFolders.olFolderCalendar).Items;
             calendarItems.IncludeRecurrences = true;
 
             foreach (AppointmentItem item in calendarItems)
             {
-                ics += CreateEvent(item);
+                CreateEvent(ics, item, false);
             }
-
-            ics += "END:VCALENDAR\n";
-
+            
             return ics;
         }
 
         static void Main(string[] args)
         {
-            string ics = GenerateIcs();
-            //Console.Write(ics);
-            FtpUpload(ics);
+            iCalendar ics = GenerateIcs();
+            iCalendarSerializer serializer = new iCalendarSerializer();
+            string output = serializer.SerializeToString(ics);
+            //Console.Write(output);
+            FtpUpload(output);
             //Console.Read();
         }
     }

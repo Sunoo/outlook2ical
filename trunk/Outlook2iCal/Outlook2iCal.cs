@@ -19,13 +19,10 @@ namespace Outlook2iCal
         {
             try
             {
-                //TODO: Don't hardcode location
-                FtpWebRequest request = (FtpWebRequest)WebRequest.Create("FTPSERVERPATH");
+                FtpWebRequest request = (FtpWebRequest)WebRequest.Create(Configuration.FtpUrl);
                 request.Method = WebRequestMethods.Ftp.UploadFile;
 
-                //TODO: Don't hardcode credentials
-                request.Credentials = new NetworkCredential("FTPUSERNAME", "FTPPASSWORD");
-
+                request.Credentials = new NetworkCredential(Configuration.FtpUser, Configuration.FtpPass);
 
                 byte[] fileContents = Encoding.UTF8.GetBytes(input);
                 request.ContentLength = fileContents.Length;
@@ -52,16 +49,16 @@ namespace Outlook2iCal
             switch (week)
             {
                 case 1:
-                    occur = FrequencyOccurrence.Last;
+                    occur = FrequencyOccurrence.First;
                     break;
                 case 2:
-                    occur = FrequencyOccurrence.Last;
+                    occur = FrequencyOccurrence.Second;
                     break;
                 case 3:
-                    occur = FrequencyOccurrence.Last;
+                    occur = FrequencyOccurrence.Third;
                     break;
                 case 4:
-                    occur = FrequencyOccurrence.Last;
+                    occur = FrequencyOccurrence.Fourth;
                     break;
                 case 5:
                     occur = FrequencyOccurrence.Last;
@@ -190,7 +187,7 @@ namespace Outlook2iCal
                 icsEvent.DTStart = new iCalDateTime(item.Start, tzid);
                 if (notRecurring && !item.IsRecurring)
                 {
-                    icsEvent.DTStart = new iCalDateTime(item.End, tzid);
+                    icsEvent.DTEnd = new iCalDateTime(item.End, tzid);
                 }
             }
             else
@@ -216,19 +213,21 @@ namespace Outlook2iCal
                 }
             }
 
-            //NOTE: This causes issues with Google Calendar, so it's not worth it
-            /*switch (item.Sensitivity)
+            if (Configuration.IncludeClass)
             {
-                case OlSensitivity.olNormal:
-                    icsEvent.Class = "PUBLIC";
-                    break;
-                case OlSensitivity.olPersonal:
-                    icsEvent.Class = "CONFIDENTIAL";
-                    break;
-                default:
-                    icsEvent.Class = "PRIVATE";
-                    break;
-            }*/
+                switch (item.Sensitivity)
+                {
+                    case OlSensitivity.olNormal:
+                        icsEvent.Class = "PUBLIC";
+                        break;
+                    case OlSensitivity.olPersonal:
+                        icsEvent.Class = "CONFIDENTIAL";
+                        break;
+                    default:
+                        icsEvent.Class = "PRIVATE";
+                        break;
+                }
+            }
 
             icsEvent.Description = item.Body;
 
@@ -246,8 +245,7 @@ namespace Outlook2iCal
 
             foreach (Recipient recip in item.Recipients)
             {
-                string email = recip.Address.Substring(recip.Address.LastIndexOf('=') + 1);
-                email += "@travelers.com";
+                string email = "MAILTO:" + recip.Address.Substring(recip.Address.LastIndexOf('=') + 1) + Configuration.MailDomain;
                 emails.Add(recip.Name, email);
                 status.Add(recip.Name, recip.MeetingResponseStatus);
             }
@@ -256,7 +254,7 @@ namespace Outlook2iCal
             {
                 if (emails.ContainsKey(item.Organizer))
                 {
-                    icsEvent.Organizer = new Organizer("MAILTO:" + emails[item.Organizer]);
+                    icsEvent.Organizer = new Organizer(emails[item.Organizer]);
                 }
                 else
                 {
@@ -273,7 +271,7 @@ namespace Outlook2iCal
                     Attendee attend;
                     if (emails.ContainsKey(req))
                     {
-                        attend = new Attendee("MAILTO:" + emails[req]);
+                        attend = new Attendee(emails[req]);
                     }
                     else
                     {
@@ -308,7 +306,7 @@ namespace Outlook2iCal
                     Attendee attend;
                     if (emails.ContainsKey(opt))
                     {
-                        attend = new Attendee("MAILTO:" + emails[opt]);
+                        attend = new Attendee(emails[opt]);
                     }
                     else
                     {
@@ -334,10 +332,18 @@ namespace Outlook2iCal
                 }
             }
 
+            if (item.ResponseStatus == OlResponseStatus.olResponseAccepted)
+            {
+                icsEvent.Status = EventStatus.Confirmed;
+            }
+            else
+            {
+                icsEvent.Status = EventStatus.Tentative;
+            }
+
             icsEvent.DTStamp = new iCalDateTime(item.CreationTime, tzid);
             icsEvent.LastModified = new iCalDateTime(item.LastModificationTime, tzid);
-            //NOTE: Since this is the same for all recurring items, it was breaking the iPhone calendar
-            //icsEvent.UID = item.EntryID;
+
             byte[] buf = Encoding.Default.GetBytes(item.EntryID + item.Start.ToFileTimeUtc());
             SHA1CryptoServiceProvider sha = new SHA1CryptoServiceProvider();
             icsEvent.UID = BitConverter.ToString(sha.ComputeHash(buf)).Replace("-", "");

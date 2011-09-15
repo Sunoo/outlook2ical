@@ -8,6 +8,7 @@ using Microsoft.Office.Interop.Outlook;
 using DDay.iCal;
 using DDay.iCal.Serialization.iCalendar;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 namespace Outlook2iCal
 {
@@ -179,7 +180,20 @@ namespace Outlook2iCal
 
         private static void CreateEvent(iCalendar ics, AppointmentItem item, bool notRecurring)
         {
-            Event icsEvent = ics.Create<Event>();
+            Event icsEvent = new Event();
+
+            if (item.Categories != null)
+            {
+                string[] cats = item.Categories.Split(',');
+                foreach (string cat in cats)
+                {
+                    icsEvent.Categories.Add(cat);
+                    if (Configuration.SkipCategories.Contains(cat))
+                    {
+                        return;
+                    }
+                }
+            }
 
             if (item.AllDayEvent)
             {
@@ -202,16 +216,16 @@ namespace Outlook2iCal
             }
 
             icsEvent.Location = item.Location;
-            icsEvent.Summary = item.Subject;
 
-            if (item.Categories != null)
+            string summary = item.Subject;
+            foreach (string filter in Configuration.CleanSubjects)
             {
-                string[] cats = item.Categories.Split(',');
-                foreach (string cat in cats)
+                if (summary.StartsWith(filter))
                 {
-                    icsEvent.Categories.Add(cat);
+                    summary = summary.Substring(filter.Length);
                 }
             }
+            icsEvent.Summary = summary;
 
             if (Configuration.IncludeClass)
             {
@@ -229,7 +243,33 @@ namespace Outlook2iCal
                 }
             }
 
-            icsEvent.Description = item.Body;
+            string descr = item.Body;
+            if (descr != null)
+            {
+                // I have no idea what the proper way of handling hyperlinks in iCal feeds is, I'll implement this if I learn it.
+                /*if (descr.IndexOf("HYPERLINK") > -1)
+                {
+                    Regex regex = new Regex(@"HYPERLINK ""(?<url>.*)""(?<link>.*)\r", RegexOptions.Multiline);
+                    descr = regex.Replace(descr, new MatchEvaluator(Outlook2iCal.ReplaceHyperlink));
+                }*/
+
+                if (Configuration.SplitDescription.Length > 0)
+                {
+                    int index = descr.IndexOf(Configuration.SplitDescription);
+                    if (index > -1)
+                    {
+                        icsEvent.Description = descr.Substring(index + Configuration.SplitDescription.Length).TrimStart();
+                    }
+                    else
+                    {
+                        icsEvent.Description = descr;
+                    }
+                }
+                else
+                {
+                    icsEvent.Description = descr;
+                }
+            }
 
             if (item.ReminderMinutesBeforeStart > 0)
             {
@@ -359,7 +399,17 @@ namespace Outlook2iCal
                     }
                 }
             }
+
+            ics.Events.Add(icsEvent);
         }
+
+        // I have no idea what the proper way of handling hyperlinks in iCal feeds is, I'll implement this if I learn it.
+        /*public static string ReplaceHyperlink(Match match)
+        {
+            string url = match.Groups["url"].Captures[0].Value;
+            string link = match.Groups["link"].Captures[0].Value;
+            return "<a href=\"" + url + "\">" + link + "</a>";
+        }*/
 
         private static iCalendar GenerateIcs()
         {

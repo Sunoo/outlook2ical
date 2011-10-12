@@ -426,7 +426,6 @@ namespace Outlook2iCal
             iCalendar ics = new iCalendar();
 
             ITimeZone tz = ics.AddLocalTimeZone();
-            tzid = tz.TZID;
 
             ics.ProductID = "-//David Maher/NONSGML Outlook2iCal 2.0//EN";
             
@@ -441,12 +440,53 @@ namespace Outlook2iCal
             return ics;
         }
 
+        public static string SeperateExdates(string ics, string tzid)
+        {
+            string output = String.Empty;
+            string exdate = String.Empty;
+            StringReader reader = new StringReader(ics);
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (exdate.Length == 0)
+                {
+                    if (line.Length > 7 && line.Substring(0, 7) == "EXDATE:")
+                    {
+                        exdate = line.Substring(7);
+                    }
+                    else
+                    {
+                        output += line + "\r\n";
+                    }
+                }
+                else
+                {
+                    if (line[0] == ' ')
+                    {
+                        exdate += line.Substring(1);
+                    }
+                    else
+                    {
+                        string[] exdates = exdate.Split(',');
+                        foreach (string curexdate in exdates)
+                        {
+                            output += "EXDATE;TZID=" + tzid + ":" + curexdate + "\r\n";
+                        }
+                        exdate = String.Empty;
+                        output += line + "\r\n";
+                    }
+                }
+            }
+            return output;
+        }
+
         static void Main(string[] args)
         {
             iCalendar ics = GenerateIcs();
             iCalendarSerializer serializer = new iCalendarSerializer();
             string output = serializer.SerializeToString(ics);
             //Console.Write(output);
+            output = SeperateExdates(output, ics.TimeZones[0].TZID);
             FtpUpload(output);
             //Console.Read();
         }

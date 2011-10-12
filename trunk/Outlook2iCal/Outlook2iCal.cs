@@ -172,7 +172,15 @@ namespace Outlook2iCal
                 PeriodList list = new PeriodList();
                 foreach (Microsoft.Office.Interop.Outlook.Exception except in pattern.Exceptions)
                 {
-                    list.Add(new iCalDateTime(except.OriginalDate, tzid));
+                    DateTime exDate = except.OriginalDate;
+                    if (exDate.TimeOfDay.TotalSeconds > 0)
+                    {
+                        list.Add(new iCalDateTime(exDate, tzid));
+                    }
+                    else
+                    {
+                        list.Add(new iCalDateTime(exDate.Add(item.Start.TimeOfDay), tzid));
+                    }
                 }
                 icsEvent.ExceptionDates.Add(list);
             }
@@ -253,21 +261,23 @@ namespace Outlook2iCal
                     descr = regex.Replace(descr, new MatchEvaluator(Outlook2iCal.ReplaceHyperlink));
                 }*/
 
-                if (Configuration.SplitDescription.Length > 0)
+                int startIndex = descr.IndexOf(Configuration.DescriptionStart);
+                int endIndex = descr.IndexOf(Configuration.DescriptionEnd);
+                if (startIndex == -1)
                 {
-                    int index = descr.IndexOf(Configuration.SplitDescription);
-                    if (index > -1)
-                    {
-                        icsEvent.Description = descr.Substring(index + Configuration.SplitDescription.Length).TrimStart();
-                    }
-                    else
-                    {
-                        icsEvent.Description = descr;
-                    }
+                    startIndex = 0;
                 }
                 else
                 {
-                    icsEvent.Description = descr;
+                    startIndex += Configuration.DescriptionStart.Length;
+                }
+                if (endIndex == -1)
+                {
+                    icsEvent.Description = descr.Substring(startIndex).Trim();
+                }
+                else
+                {
+                    icsEvent.Description = descr.Substring(startIndex, endIndex - startIndex).Trim();
                 }
             }
 

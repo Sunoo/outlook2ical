@@ -16,7 +16,8 @@ namespace Outlook2iCal
         public static readonly bool IncludeClass = false;
 
         public static readonly string[] CleanSubjects = new string[] { "Updated: ", "FW: " };
-        public static readonly string SplitDescription = "*~*~*~*~*~*~*~*~*~*";
+        public static readonly string DescriptionStart = "*~*~*~*~*~*~*~*~*~*";
+        public static readonly string DescriptionEnd = "-+-----+-----+-----+-----+-----+-----+-----+-----+-";
 
         public static readonly string[] SkipCategories = new string[] { "Reminder", "Vacation" };
     }

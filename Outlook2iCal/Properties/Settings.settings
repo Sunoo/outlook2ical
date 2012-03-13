@@ -1,0 +1,42 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="Outlook2iCalGui.Properties" GeneratedClassName="Settings">
+  <Profiles />
+  <Settings>
+    <Setting Name="FtpUrl" Type="System.String" Scope="User">
+      <Value Profile="(Default)">ftp://SERVER/PATH/outlook.ics</Value>
+    </Setting>
+    <Setting Name="FtpUser" Type="System.String" Scope="User">
+      <Value Profile="(Default)">USERNAME</Value>
+    </Setting>
+    <Setting Name="FtpPass" Type="System.String" Scope="User">
+      <Value Profile="(Default)">PASSWORD</Value>
+    </Setting>
+    <Setting Name="MailDomain" Type="System.String" Scope="User">
+      <Value Profile="(Default)">@example.com</Value>
+    </Setting>
+    <Setting Name="IncludeClass" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="CleanSubjects" Type="System.Collections.Specialized.StringCollection" Scope="User">
+      <Value Profile="(Default)">&lt;?xml version="1.0" encoding="utf-16"?&gt;
+&lt;ArrayOfString xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"&gt;
+  &lt;string&gt;Updated: &lt;/string&gt;
+  &lt;string&gt;FW: &lt;/string&gt;
+  &lt;string&gt;RE: &lt;/string&gt;
+&lt;/ArrayOfString&gt;</Value>
+    </Setting>
+    <Setting Name="DescriptionStart" Type="System.String" Scope="User">
+      <Value Profile="(Default)">*~*~*~*~*~*~*~*~*~*</Value>
+    </Setting>
+    <Setting Name="DescriptionEnd" Type="System.String" Scope="User">
+      <Value Profile="(Default)">-+-----+-----+-----+-----+-----+-----+-----+-----+-</Value>
+    </Setting>
+    <Setting Name="SkipCategories" Type="System.Collections.Specialized.StringCollection" Scope="User">
+      <Value Profile="(Default)">&lt;?xml version="1.0" encoding="utf-16"?&gt;
+&lt;ArrayOfString xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"&gt;
+  &lt;string&gt;Reminder&lt;/string&gt;
+  &lt;string&gt;Vacation&lt;/string&gt;
+&lt;/ArrayOfString&gt;</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>

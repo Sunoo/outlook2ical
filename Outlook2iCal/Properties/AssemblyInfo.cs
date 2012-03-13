@@ -1,4 +1,4 @@
- using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -8,9 +8,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("Outlook2iCal")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("David Maher")]
+[assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("Outlook2iCal")]
-[assembly: AssemblyCopyright("Copyright © David Maher 2011")]
+[assembly: AssemblyCopyright("")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -20,7 +20,7 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
-[assembly: Guid("259e754c-cdb8-4776-a1ef-e79dc329b4c3")]
+[assembly: Guid("24d0a9ba-d504-4da3-aecb-76e18e2c96ef")]
 
 // Version information for an assembly consists of the following four values:
 //

@@ -1,7 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
 using System.Linq;
 using System.Text;
+using System.Windows.Forms;
 using System.Net;
 using System.IO;
 using Microsoft.Office.Interop.Outlook;
@@ -12,39 +16,54 @@ using System.Text.RegularExpressions;
 
 namespace Outlook2iCal
 {
-    class Outlook2iCal
+    public partial class Outlook2iCal : Form
     {
-        private static string tzid;
+        private string tzid;
 
-        private static void FtpUpload(string input)
+        private void FtpUpload(string input)
         {
             try
             {
-                FtpWebRequest request = (FtpWebRequest)WebRequest.Create(Configuration.FtpUrl);
+                exceptLabel.Text = "Upload:";
+                currentBox.Text = "Uploading...";
+                byte[] fileContents = Encoding.UTF8.GetBytes(input);
+                exceptBar.Maximum = fileContents.Length;
+                
+                FtpWebRequest request = (FtpWebRequest)WebRequest.Create(Properties.Settings.Default.FtpUrl);
                 request.Method = WebRequestMethods.Ftp.UploadFile;
 
-                request.Credentials = new NetworkCredential(Configuration.FtpUser, Configuration.FtpPass);
+                request.Credentials = new NetworkCredential(Properties.Settings.Default.FtpUser, Properties.Settings.Default.FtpPass);
 
-                byte[] fileContents = Encoding.UTF8.GetBytes(input);
                 request.ContentLength = fileContents.Length;
 
-                Stream requestStream = request.GetRequestStream();
-                requestStream.Write(fileContents, 0, fileContents.Length);
-                requestStream.Close();
+                using (Stream fileStream = new MemoryStream(fileContents))
+                using (Stream requestStream = request.GetRequestStream())
+                {
+                    var buffer = new byte[1024];
+                    int totalReadBytesCount = 0;
+                    int readBytesCount;
+                    while ((readBytesCount = fileStream.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        requestStream.Write(buffer, 0, readBytesCount);
+                        totalReadBytesCount += readBytesCount;
+                        exceptBar.Value = totalReadBytesCount;
+                        //exceptText.Text = totalReadBytesCount + "/" + fileContents.Length;
+                    }
+                }
 
                 FtpWebResponse response = (FtpWebResponse)request.GetResponse();
 
-                Console.WriteLine("Upload File Complete, status {0}", response.StatusDescription);
+                currentBox.Text = "Upload Complete";
 
                 response.Close();
             }
-            catch (WebException ex)
+            catch (WebException)
             {
-                Console.WriteLine("Upload File Failed, {0}", ex.Message);
+                currentBox.Text = "Upload Failed";
             }
         }
 
-        private static void DaysOfWeek(DDay.iCal.RecurrencePattern pattern, OlDaysOfWeek mask, int week)
+        private void DaysOfWeek(DDay.iCal.RecurrencePattern pattern, OlDaysOfWeek mask, int week)
         {
             FrequencyOccurrence occur;
             switch (week)
@@ -98,7 +117,19 @@ namespace Outlook2iCal
             }
         }
 
-        private static void CreateReoccuringEvent(Event icsEvent, AppointmentItem item)
+        private string CleanupName(string rawName)
+        {
+            if ((rawName[0] == '\'') && (rawName[rawName.Length - 1] == '\''))
+            {
+                return rawName.Substring(1, rawName.Length - 2).Replace(", ", ",");
+            }
+            else
+            {
+                return rawName;
+            }
+        }
+
+        private void CreateReoccuringEvent(Event icsEvent, AppointmentItem item)
         {
             DDay.iCal.RecurrencePattern newPatt = new DDay.iCal.RecurrencePattern();
 
@@ -186,8 +217,9 @@ namespace Outlook2iCal
             }
         }
 
-        private static void CreateEvent(iCalendar ics, AppointmentItem item, bool notRecurring)
+        private void CreateEvent(iCalendar ics, AppointmentItem item, bool notRecurring)
         {
+            currentBox.Text = item.Subject;
             Event icsEvent = new Event();
 
             if (item.Categories != null)
@@ -196,7 +228,7 @@ namespace Outlook2iCal
                 foreach (string cat in cats)
                 {
                     icsEvent.Categories.Add(cat);
-                    if (Configuration.SkipCategories.Contains(cat))
+                    if (Properties.Settings.Default.SkipCategories.Contains(cat))
                     {
                         return;
                     }
@@ -226,16 +258,20 @@ namespace Outlook2iCal
             icsEvent.Location = item.Location;
 
             string summary = item.Subject;
-            foreach (string filter in Configuration.CleanSubjects)
+            if (summary.StartsWith("Canceled: ", StringComparison.CurrentCultureIgnoreCase))
             {
-                if (summary.StartsWith(filter))
+                return;
+            }
+            foreach (string filter in Properties.Settings.Default.CleanSubjects)
+            {
+                if (summary.StartsWith(filter, StringComparison.CurrentCultureIgnoreCase))
                 {
                     summary = summary.Substring(filter.Length);
                 }
             }
             icsEvent.Summary = summary;
 
-            if (Configuration.IncludeClass)
+            if (Properties.Settings.Default.IncludeClass)
             {
                 switch (item.Sensitivity)
                 {
@@ -261,15 +297,15 @@ namespace Outlook2iCal
                     descr = regex.Replace(descr, new MatchEvaluator(Outlook2iCal.ReplaceHyperlink));
                 }*/
 
-                int startIndex = descr.IndexOf(Configuration.DescriptionStart);
-                int endIndex = descr.IndexOf(Configuration.DescriptionEnd);
+                int startIndex = descr.IndexOf(Properties.Settings.Default.DescriptionStart);
+                int endIndex = descr.IndexOf(Properties.Settings.Default.DescriptionEnd);
                 if (startIndex == -1)
                 {
                     startIndex = 0;
                 }
                 else
                 {
-                    startIndex += Configuration.DescriptionStart.Length;
+                    startIndex += Properties.Settings.Default.DescriptionStart.Length;
                 }
                 if (endIndex == -1)
                 {
@@ -295,7 +331,11 @@ namespace Outlook2iCal
 
             foreach (Recipient recip in item.Recipients)
             {
-                string email = "MAILTO:" + recip.Address.Substring(recip.Address.LastIndexOf('=') + 1) + Configuration.MailDomain;
+                string email = "MAILTO:" + recip.Address.Substring(recip.Address.LastIndexOf('=') + 1);
+                if (email.IndexOf('@') == -1)
+                {
+                    email += Properties.Settings.Default.MailDomain;
+                }
                 emails.Add(recip.Name, email);
                 status.Add(recip.Name, recip.MeetingResponseStatus);
             }
@@ -310,7 +350,7 @@ namespace Outlook2iCal
                 {
                     icsEvent.Organizer = new Organizer();
                 }
-                icsEvent.Organizer.CommonName = item.Organizer;
+                icsEvent.Organizer.CommonName = CleanupName(item.Organizer);
             }
 
             if (item.RequiredAttendees != null)
@@ -343,7 +383,7 @@ namespace Outlook2iCal
                                 break;
                         }
                     }
-                    attend.CommonName = req;
+                    attend.CommonName = CleanupName(req);
                     icsEvent.Attendees.Add(attend);
                 }
             }
@@ -377,7 +417,7 @@ namespace Outlook2iCal
                                 break;
                         }
                     }
-                    attend.CommonName = opt;
+                    attend.CommonName = CleanupName(opt);
                     icsEvent.Attendees.Add(attend);
                 }
             }
@@ -401,13 +441,23 @@ namespace Outlook2iCal
             if (!notRecurring && item.IsRecurring)
             {
                 Microsoft.Office.Interop.Outlook.RecurrencePattern pattern = item.GetRecurrencePattern();
+
+                int count = 0;
+                exceptBar.Maximum = pattern.Exceptions.Count;
+
                 foreach (Microsoft.Office.Interop.Outlook.Exception except in pattern.Exceptions)
                 {
+                    count++;
+                    exceptBar.Value = count;
+                    //exceptText.Text = count + "/" + pattern.Exceptions.Count;
                     if (!except.Deleted)
                     {
                         CreateEvent(ics, except.AppointmentItem, true);
                     }
                 }
+
+                exceptBar.Value = 0;
+                //exceptText.Text = String.Empty;
             }
 
             ics.Events.Add(icsEvent);
@@ -421,27 +471,35 @@ namespace Outlook2iCal
             return "<a href=\"" + url + "\">" + link + "</a>";
         }*/
 
-        private static iCalendar GenerateIcs()
+        private iCalendar GenerateIcs()
         {
             iCalendar ics = new iCalendar();
 
             ITimeZone tz = ics.AddLocalTimeZone();
+            tzid = tz.TZID;
 
             ics.ProductID = "-//David Maher/NONSGML Outlook2iCal 2.0//EN";
-            
-            Items calendarItems = new Application().GetNamespace("MAPI").GetDefaultFolder(OlDefaultFolders.olFolderCalendar).Items;
+
+            Items calendarItems = new Microsoft.Office.Interop.Outlook.Application().GetNamespace("MAPI").GetDefaultFolder(OlDefaultFolders.olFolderCalendar).Items;
             calendarItems.IncludeRecurrences = true;
+
+            int count = 0;
+            eventBar.Maximum = calendarItems.Count;
 
             foreach (AppointmentItem item in calendarItems)
             {
+                count++;
+                eventBar.Value = count;
+                //eventText.Text = count + "/" + calendarItems.Count;
                 CreateEvent(ics, item, false);
             }
-            
+
             return ics;
         }
 
-        public static string SeperateExdates(string ics, string tzid)
+        public string SeperateExdates(string ics, string tzid)
         {
+            //I freely admit this is a kludge, but whatever, it works
             string output = String.Empty;
             string exdate = String.Empty;
             StringReader reader = new StringReader(ics);
@@ -479,16 +537,60 @@ namespace Outlook2iCal
             }
             return output;
         }
+        
+        public Outlook2iCal()
+        {
+            InitializeComponent();
+            Control.CheckForIllegalCrossThreadCalls = false;
+        }
 
-        static void Main(string[] args)
+        private void startButton_Click(object sender, EventArgs e)
+        {
+            currentBox.ForeColor = Color.Black;
+            startButton.Enabled = false;
+            exceptLabel.Text = "Exceptions:";
+            //exceptText.Text = String.Empty;
+            exceptBar.Value = 0;
+            currentBox.Text = String.Empty;
+            backgroundWorker.RunWorkerAsync();
+        }
+
+        private void backgroundWorker_DoWork(object sender, DoWorkEventArgs e)
         {
             iCalendar ics = GenerateIcs();
             iCalendarSerializer serializer = new iCalendarSerializer();
             string output = serializer.SerializeToString(ics);
-            //Console.Write(output);
             output = SeperateExdates(output, ics.TimeZones[0].TZID);
             FtpUpload(output);
-            //Console.Read();
+        }
+
+        private void backgroundWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            startButton.Enabled = true;
+        }
+
+        private void eventBar_ValueChanged(object sender, EventArgs e)
+        {
+            if (eventBar.Value != 0)
+            {
+                eventText.Text = eventBar.Value + "/" + eventBar.Maximum;
+            }
+            else
+            {
+                eventText.Text = String.Empty;
+            }
+        }
+
+        private void exceptBar_ValueChanged(object sender, EventArgs e)
+        {
+            if (exceptBar.Value != 0)
+            {
+                exceptText.Text = exceptBar.Value + "/" + exceptBar.Maximum;
+            }
+            else
+            {
+                exceptText.Text = String.Empty;
+            }
         }
     }
 }
